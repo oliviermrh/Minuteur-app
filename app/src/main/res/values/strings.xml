@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Minuteur d\'applis</string>
+    <string name="accessibility_description">Détecte l\'ouverture des applications que tu as choisies pour afficher un minuteur avant d\'y accéder. Le contenu de l\'écran n\'est pas lu et rien n\'est envoyé.</string>
+    <color name="ic_launcher_background">#3B7DED</color>
+</resources>
