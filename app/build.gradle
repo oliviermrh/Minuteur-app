@@ -10,8 +10,8 @@ android {
         applicationId 'com.minuteur.applis'
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        versionCode 2
+        versionName '1.1'
     }
 
     // Clé de signature fixe, incluse dans le projet : chaque nouvelle version

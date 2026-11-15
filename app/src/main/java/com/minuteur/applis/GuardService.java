@@ -32,8 +32,9 @@ import java.util.Map;
  * Détecte l'ouverture des applis choisies et affiche un écran de minuteur par-dessus.
  *
  * Fonctionnement, par appli :
- *  - première ouverture : un minuteur démarre (durée réglable) et l'écran d'attente s'affiche ;
- *  - le minuteur continue même si on quitte l'écran ;
+ *  - à l'ouverture, l'écran d'attente propose « Lancer le minuteur » ou « Retour à l'accueil » ;
+ *  - le minuteur (durée réglable) ne tourne que tant qu'on reste sur cet écran :
+ *    si on le quitte, il est annulé et repart de zéro à la prochaine ouverture ;
  *  - une fois terminé, l'appli est accessible librement pendant la « durée d'accès » ;
  *  - ensuite, tout recommence.
  */
@@ -41,8 +42,11 @@ public class GuardService extends AccessibilityService {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
 
-    /** Pour chaque appli : instant (elapsedRealtime, ms) où son minuteur se termine. */
-    private final Map<String, Long> readyAt = new HashMap<>();
+    /** Pour chaque appli : instant (elapsedRealtime, ms) jusqu'auquel l'accès est libre. */
+    private final Map<String, Long> accessUntil = new HashMap<>();
+
+    /** Fin du minuteur affiché (elapsedRealtime, ms), ou 0 tant qu'il n'est pas lancé. */
+    private long timerEnd;
 
     private WindowManager windowManager;
     private String homePackage;
@@ -55,7 +59,7 @@ public class GuardService extends AccessibilityService {
     private int overlayGeneration;
     private TextView countdownView;
     private TextView hintView;
-    private Button openButton;
+    private Button startButton;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -172,24 +176,36 @@ public class GuardService extends AccessibilityService {
 
     private void evaluate(String pkg) {
         long now = SystemClock.elapsedRealtime();
-        long delay = Prefs.delaySeconds(this) * 1000L;
-        long window = Prefs.windowSeconds(this) * 1000L;
-
-        Long ready = readyAt.get(pkg);
-        if (ready == null || now >= ready + window) {
-            // Pas de minuteur en cours, ou durée d'accès écoulée : nouveau minuteur.
-            ready = now + delay;
-            readyAt.put(pkg, ready);
-        }
-
-        if (now >= ready) {
-            // Minuteur terminé : accès libre jusqu'à la fin de la durée d'accès.
+        Long until = accessUntil.get(pkg);
+        if (until != null && now < until) {
+            // Minuteur déjà terminé : accès libre jusqu'à la fin de la durée d'accès.
             hideOverlay();
-            handler.removeCallbacks(accessEnd);
-            handler.postDelayed(accessEnd, Math.max(0, ready + window - now) + 100);
+            scheduleAccessEnd(until - now);
         } else {
+            accessUntil.remove(pkg);
             showOverlay(pkg);
         }
+    }
+
+    private void startTimer() {
+        if (overlay == null || overlayPkg == null || timerEnd != 0) {
+            return;
+        }
+        timerEnd = SystemClock.elapsedRealtime() + Prefs.delaySeconds(this) * 1000L;
+        refreshOverlay();
+    }
+
+    /** Le minuteur est allé au bout sans qu'on quitte l'écran : on ouvre l'accès. */
+    private void grantAccess(String pkg) {
+        long window = Prefs.windowSeconds(this) * 1000L;
+        accessUntil.put(pkg, SystemClock.elapsedRealtime() + window);
+        hideOverlay();
+        scheduleAccessEnd(window);
+    }
+
+    private void scheduleAccessEnd(long delayMs) {
+        handler.removeCallbacks(accessEnd);
+        handler.postDelayed(accessEnd, Math.max(0, delayMs) + 100);
     }
 
     private void restoreAfterUnlock() {
@@ -248,7 +264,7 @@ public class GuardService extends AccessibilityService {
         }
         overlayGeneration++;
         if (overlay != null && pkg.equals(overlayPkg)) {
-            refreshOverlay();
+            // Déjà affiché pour cette appli : on ne touche pas au minuteur en cours.
             return;
         }
         hideOverlay();
@@ -269,11 +285,14 @@ public class GuardService extends AccessibilityService {
         }
         overlay = view;
         overlayPkg = pkg;
+        timerEnd = 0;
         refreshOverlay();
     }
 
+    /** Retire l'écran d'attente. Un minuteur en cours est annulé : il repartira de zéro. */
     private void hideOverlay() {
         handler.removeCallbacks(tick);
+        timerEnd = 0;
         if (overlay != null) {
             try {
                 windowManager.removeView(overlay);
@@ -289,20 +308,33 @@ public class GuardService extends AccessibilityService {
         if (overlay == null || overlayPkg == null) {
             return;
         }
-        Long ready = readyAt.get(overlayPkg);
-        long remaining = ready == null ? 0 : ready - SystemClock.elapsedRealtime();
-        if (remaining > 0) {
-            long s = (remaining + 999) / 1000;
-            countdownView.setText(String.format(Locale.FRANCE, "%d:%02d", s / 60, s % 60));
-            hintView.setText("Le minuteur continue même si tu quittes cet écran.\n"
-                    + "Ensuite : accès libre pendant " + Prefs.format(Prefs.windowSeconds(this)) + ".");
-            openButton.setVisibility(View.GONE);
-            handler.postDelayed(tick, 500);
-        } else {
-            countdownView.setText("0:00");
-            hintView.setText("C'est prêt. Tu veux toujours l'ouvrir ?");
-            openButton.setVisibility(View.VISIBLE);
+        if (timerEnd == 0) {
+            // Minuteur pas encore lancé.
+            countdownView.setText(clock(Prefs.delaySeconds(this)));
+            hintView.setText("Lance le minuteur et reste sur cet écran jusqu'à la fin "
+                    + "pour accéder à l'appli.");
+            startButton.setVisibility(View.VISIBLE);
+            overlay.setKeepScreenOn(false);
+            return;
         }
+        long remaining = timerEnd - SystemClock.elapsedRealtime();
+        if (remaining <= 0) {
+            grantAccess(overlayPkg);
+            return;
+        }
+        countdownView.setText(clock((remaining + 999) / 1000));
+        if (startButton.getVisibility() != View.GONE) {
+            hintView.setText("Reste sur cet écran : si tu le quittes, le minuteur repart de zéro.\n"
+                    + "Ensuite : accès libre pendant " + Prefs.format(Prefs.windowSeconds(this)) + ".");
+            startButton.setVisibility(View.GONE);
+            // L'écran reste allumé pendant le décompte : une mise en veille l'annulerait.
+            overlay.setKeepScreenOn(true);
+        }
+        handler.postDelayed(tick, Math.min(remaining, 250));
+    }
+
+    private static String clock(long seconds) {
+        return String.format(Locale.FRANCE, "%d:%02d", seconds / 60, seconds % 60);
     }
 
     private View buildOverlay(String label) {
@@ -332,17 +364,14 @@ public class GuardService extends AccessibilityService {
         hintView = text("", 16, 0xFFB6C2CF, false);
         root.addView(hintView, params(false, 12));
 
-        openButton = button("Ouvrir " + label, 0xFF3B7DED);
-        openButton.setOnClickListener(new View.OnClickListener() {
+        startButton = button("Lancer le minuteur", 0xFF3B7DED);
+        startButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String pkg = overlayPkg;
-                if (pkg != null) {
-                    evaluate(pkg);
-                }
+                startTimer();
             }
         });
-        root.addView(openButton, params(true, 32));
+        root.addView(startButton, params(true, 32));
 
         Button home = button("Retour à l'accueil", 0xFF2A323D);
         home.setOnClickListener(new View.OnClickListener() {

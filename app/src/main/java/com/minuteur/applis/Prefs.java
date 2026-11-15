@@ -22,7 +22,7 @@ final class Prefs {
         return c.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
-    /** Temps d'attente avant l'ouverture, en secondes (5 min par défaut). */
+    /** Durée du minuteur à laisser tourner avant l'accès, en secondes (5 min par défaut). */
     static int delaySeconds(Context c) {
         return sp(c).getInt(KEY_DELAY, 300);
     }
@@ -59,6 +59,6 @@ final class Prefs {
         if (seconds % 60 == 0) {
             return (seconds / 60) + " min";
         }
-        return (seconds / 60) + " min " + (seconds % 60) + " s";
+        return (seconds / 60) + " min " + (seconds % 60);
     }
 }

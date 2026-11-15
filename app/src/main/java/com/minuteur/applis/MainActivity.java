@@ -35,7 +35,7 @@ import java.util.Set;
 public class MainActivity extends Activity {
 
     /** Valeurs proposées, en secondes. */
-    private static final int[] DELAYS = {10, 30, 60, 120, 180, 300, 600, 900, 1200, 1800, 2700, 3600};
+    private static final int[] DELAYS = {10, 30, 60, 90, 120, 180, 240, 300};
     private static final int[] WINDOWS = {60, 120, 300, 600, 900, 1200, 1800, 2700, 3600};
 
     private final List<AppItem> items = new ArrayList<>();
@@ -63,6 +63,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         selected = Prefs.apps(this);
+        // Une durée enregistrée par une ancienne version peut ne plus être proposée.
+        Prefs.setDelaySeconds(this, DELAYS[nearest(DELAYS, Prefs.delaySeconds(this))]);
 
         ListView list = new ListView(this);
         list.setDividerHeight(0);
@@ -98,7 +100,7 @@ public class MainActivity extends Activity {
         header.setPadding(pad, pad, pad, dp(8));
 
         header.addView(text("Minuteur d'applis", 26, true), block(0));
-        header.addView(text("Un temps d'attente avant d'ouvrir les applis que tu choisis.", 15, false), block(4));
+        header.addView(text("Un minuteur à lancer avant d'accéder aux applis que tu choisis.", 15, false), block(4));
 
         statusView = text("", 16, true);
         header.addView(statusView, block(20));
@@ -141,7 +143,7 @@ public class MainActivity extends Activity {
         helpBlock = help;
         header.addView(help, block(0));
 
-        delayValue = addStepper(header, "Attente avant ouverture", true);
+        delayValue = addStepper(header, "Durée du minuteur", true);
         windowValue = addStepper(header, "Durée d'accès ensuite", false);
 
         header.addView(text("Applications concernées", 18, true), block(28));
@@ -169,7 +171,7 @@ public class MainActivity extends Activity {
 
         TextView value = text("", 16, true);
         value.setGravity(Gravity.CENTER);
-        row.addView(value, new LinearLayout.LayoutParams(dp(76), ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.addView(value, new LinearLayout.LayoutParams(dp(84), ViewGroup.LayoutParams.WRAP_CONTENT));
 
         Button plus = new Button(this);
         plus.setText("+");
@@ -189,12 +191,7 @@ public class MainActivity extends Activity {
     private void step(boolean isDelay, int direction) {
         int[] values = isDelay ? DELAYS : WINDOWS;
         int current = isDelay ? Prefs.delaySeconds(this) : Prefs.windowSeconds(this);
-        int index = 0;
-        for (int i = 1; i < values.length; i++) {
-            if (Math.abs(values[i] - current) < Math.abs(values[index] - current)) {
-                index = i;
-            }
-        }
+        int index = nearest(values, current);
         index = Math.max(0, Math.min(values.length - 1, index + direction));
         if (isDelay) {
             Prefs.setDelaySeconds(this, values[index]);
@@ -202,6 +199,17 @@ public class MainActivity extends Activity {
             Prefs.setWindowSeconds(this, values[index]);
         }
         refreshValues();
+    }
+
+    /** Indice de la valeur proposée la plus proche de {@code current}. */
+    private static int nearest(int[] values, int current) {
+        int index = 0;
+        for (int i = 1; i < values.length; i++) {
+            if (Math.abs(values[i] - current) < Math.abs(values[index] - current)) {
+                index = i;
+            }
+        }
+        return index;
     }
 
     private void refreshValues() {

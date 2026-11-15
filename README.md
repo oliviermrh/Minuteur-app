@@ -5,10 +5,12 @@ Appli Android qui impose un temps d'attente avant d'ouvrir les applis de ton cho
 
 ## Fonctionnement
 
-1. Tu ouvres une appli surveillée : un écran d'attente s'affiche avec un compte à rebours
-   (5 min par défaut, réglable de 10 s à 60 min).
-2. Le minuteur continue même si tu retournes à l'accueil.
-3. Une fois terminé, l'appli est en accès libre pendant la « durée d'accès »
+1. Tu ouvres une appli surveillée : un écran d'attente s'affiche avec deux choix,
+   « Lancer le minuteur » ou « Retour à l'accueil ».
+2. Le minuteur (5 min par défaut ; au choix 10 s, 30 s, 1 min, 1 min 30, 2, 3, 4 ou 5 min)
+   ne tourne que si tu restes sur cet écran, qui reste allumé pendant le décompte.
+   Si tu le quittes (accueil, autre appli, mise en veille), il est annulé et repart de zéro.
+3. Une fois terminé, l'appli s'ouvre et reste en accès libre pendant la « durée d'accès »
    (15 min par défaut, réglable de 1 à 60 min).
 4. Ensuite, le cycle recommence.
 
@@ -22,6 +24,12 @@ L'appli n'a pas la permission Internet : rien ne sort du téléphone.
 4. Ouvre le fichier et autorise l'installation depuis ton navigateur.
 
 Avec Android Studio : ouvre le dossier, puis *Build > Build APK(s)*.
+
+## Mettre à jour
+
+Télécharge le dernier `minuteur-applis.apk` depuis l'onglet **Releases** et ouvre-le :
+Android propose « Mettre à jour ». Les réglages et la liste d'applis sont conservés.
+Si le minuteur ne s'affiche plus ensuite, désactive puis réactive le service dans « Accessibilité ».
 
 ## Première configuration
 
