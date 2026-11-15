@@ -10,6 +10,8 @@ Appli Android qui impose un temps d'attente avant d'ouvrir les applis de ton cho
 2. Le minuteur (5 min par défaut ; au choix 10 s, 30 s, 1 min, 1 min 30, 2, 3, 4 ou 5 min)
    ne tourne que si tu restes sur cet écran, qui reste allumé pendant le décompte.
    Si tu le quittes (accueil, autre appli, mise en veille), il est annulé et repart de zéro.
+   Tant que cet écran est affiché, le son des médias du téléphone est coupé
+   (Android ne permet pas de couper une seule appli) ; appels, sonneries et alarmes ne sont pas touchés.
 3. Une fois terminé, l'appli s'ouvre et reste en accès libre pendant la « durée d'accès »
    (15 min par défaut, réglable de 1 à 60 min).
 4. Ensuite, le cycle recommence.

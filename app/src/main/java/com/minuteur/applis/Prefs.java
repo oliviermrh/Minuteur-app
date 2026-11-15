@@ -14,6 +14,7 @@ final class Prefs {
     private static final String KEY_DELAY = "attente_s";
     private static final String KEY_WINDOW = "acces_s";
     private static final String KEY_APPS = "applis";
+    private static final String KEY_MUTED = "son_coupe";
 
     private Prefs() {
     }
@@ -50,6 +51,15 @@ final class Prefs {
 
     static boolean isGuarded(Context c, String pkg) {
         return sp(c).getStringSet(KEY_APPS, Collections.<String>emptySet()).contains(pkg);
+    }
+
+    /** Vrai tant que le service a coupé le son des médias et ne l'a pas encore remis. */
+    static boolean mutedByService(Context c) {
+        return sp(c).getBoolean(KEY_MUTED, false);
+    }
+
+    static void setMutedByService(Context c, boolean muted) {
+        sp(c).edit().putBoolean(KEY_MUTED, muted).apply();
     }
 
     static String format(int seconds) {

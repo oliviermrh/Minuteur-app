@@ -11,6 +11,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -35,6 +36,8 @@ import java.util.Map;
  *  - à l'ouverture, l'écran d'attente propose « Lancer le minuteur » ou « Retour à l'accueil » ;
  *  - le minuteur (durée réglable) ne tourne que tant qu'on reste sur cet écran :
  *    si on le quitte, il est annulé et repart de zéro à la prochaine ouverture ;
+ *  - tant que l'écran d'attente est affiché, le son des médias est coupé
+ *    (l'appli continue de tourner derrière) ;
  *  - une fois terminé, l'appli est accessible librement pendant la « durée d'accès » ;
  *  - ensuite, tout recommence.
  */
@@ -48,7 +51,13 @@ public class GuardService extends AccessibilityService {
     /** Fin du minuteur affiché (elapsedRealtime, ms), ou 0 tant qu'il n'est pas lancé. */
     private long timerEnd;
 
+    /** Délai avant de remettre le son quand on quitte l'écran, le temps que l'appli se mette en pause. */
+    private static final long UNMUTE_DELAY_MS = 600;
+
     private WindowManager windowManager;
+    private AudioManager audioManager;
+    /** Vrai si c'est ce service qui a coupé le son des médias (et doit donc le remettre). */
+    private boolean mutedByUs;
     private String homePackage;
     private String currentPkg;
     private String pkgAtScreenOff;
@@ -65,6 +74,13 @@ public class GuardService extends AccessibilityService {
         @Override
         public void run() {
             refreshOverlay();
+        }
+    };
+
+    private final Runnable unmute = new Runnable() {
+        @Override
+        public void run() {
+            unmuteNow();
         }
     };
 
@@ -100,7 +116,13 @@ public class GuardService extends AccessibilityService {
     protected void onServiceConnected() {
         super.onServiceConnected();
         windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         homePackage = resolveHomePackage();
+        if (Prefs.mutedByService(this)) {
+            // Le service a été arrêté alors qu'il avait coupé le son : on le remet.
+            Prefs.setMutedByService(this, false);
+            setMediaMuted(false);
+        }
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter();
             filter.addAction(Intent.ACTION_SCREEN_OFF);
@@ -163,6 +185,7 @@ public class GuardService extends AccessibilityService {
     private void cleanup() {
         handler.removeCallbacksAndMessages(null);
         hideOverlay();
+        unmuteNow();
         if (receiverRegistered) {
             try {
                 unregisterReceiver(screenReceiver);
@@ -200,6 +223,7 @@ public class GuardService extends AccessibilityService {
         long window = Prefs.windowSeconds(this) * 1000L;
         accessUntil.put(pkg, SystemClock.elapsedRealtime() + window);
         hideOverlay();
+        unmuteNow();
         scheduleAccessEnd(window);
     }
 
@@ -286,6 +310,7 @@ public class GuardService extends AccessibilityService {
         overlay = view;
         overlayPkg = pkg;
         timerEnd = 0;
+        muteMedia();
         refreshOverlay();
     }
 
@@ -301,6 +326,53 @@ public class GuardService extends AccessibilityService {
             overlay = null;
         }
         overlayPkg = null;
+        if (mutedByUs) {
+            handler.removeCallbacks(unmute);
+            handler.postDelayed(unmute, UNMUTE_DELAY_MS);
+        }
+    }
+
+    // ------------------------------------------------------------------- son
+
+    /** Coupe le son des médias, sauf s'il l'est déjà (on ne le remettrait pas à la place de l'utilisateur). */
+    private void muteMedia() {
+        handler.removeCallbacks(unmute);
+        if (mutedByUs || audioManager == null) {
+            return;
+        }
+        try {
+            if (audioManager.isStreamMute(AudioManager.STREAM_MUSIC)) {
+                return;
+            }
+        } catch (RuntimeException ignored) {
+        }
+        if (setMediaMuted(true)) {
+            mutedByUs = true;
+            Prefs.setMutedByService(this, true);
+        }
+    }
+
+    private void unmuteNow() {
+        handler.removeCallbacks(unmute);
+        if (!mutedByUs) {
+            return;
+        }
+        mutedByUs = false;
+        Prefs.setMutedByService(this, false);
+        setMediaMuted(false);
+    }
+
+    private boolean setMediaMuted(boolean muted) {
+        if (audioManager == null) {
+            return false;
+        }
+        try {
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    muted ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE, 0);
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private void refreshOverlay() {
@@ -345,6 +417,12 @@ public class GuardService extends AccessibilityService {
                     if (event.getAction() == KeyEvent.ACTION_UP) {
                         goHome();
                     }
+                    return true;
+                }
+                if (mutedByUs && (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP
+                        || event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN
+                        || event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_MUTE)) {
+                    // Les touches de volume remettraient le son pendant l'attente.
                     return true;
                 }
                 return super.dispatchKeyEvent(event);
