@@ -5,8 +5,8 @@ Appli Android qui impose un temps d'attente avant d'ouvrir les applis de ton cho
 
 ## Fonctionnement
 
-1. Tu ouvres une appli surveillée : un écran d'attente s'affiche avec deux choix,
-   « Lancer le minuteur » ou « Retour à l'accueil ».
+1. Tu ouvres une appli surveillée : un écran d'attente s'affiche et le minuteur démarre
+   aussitôt. Le bouton « Retour à l'accueil » permet de renoncer.
 2. Le minuteur (5 min par défaut ; au choix 10 s, 30 s, 1 min, 1 min 30, 2, 3, 4 ou 5 min)
    ne tourne que si tu restes sur cet écran, qui reste allumé pendant le décompte.
    Si tu le quittes (accueil, autre appli, mise en veille), il est annulé et repart de zéro.
