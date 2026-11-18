@@ -55,6 +55,16 @@ public class GuardService extends AccessibilityService {
     /** Délai avant de remettre le son quand on quitte l'écran, le temps que l'appli se mette en pause. */
     private static final long UNMUTE_DELAY_MS = 600;
 
+    /**
+     * Après « Retour à l'accueil », temps pendant lequel l'appli quittée est ignorée : certaines
+     * (YouTube…) signalent encore un changement de fenêtre en passant en arrière-plan, ce qui
+     * rouvrirait l'écran d'attente par-dessus l'accueil.
+     */
+    private static final long LEAVE_GRACE_MS = 2000;
+
+    /** Délai maximal avant de retirer l'écran d'attente si l'accueil ne s'est pas signalé. */
+    private static final long HOME_FALLBACK_MS = 500;
+
     private WindowManager windowManager;
     private AudioManager audioManager;
     /** Vrai si c'est ce service qui a coupé le son des médias (et doit donc le remettre). */
@@ -62,6 +72,9 @@ public class GuardService extends AccessibilityService {
     private String homePackage;
     private String currentPkg;
     private String pkgAtScreenOff;
+    /** Appli quittée avec « Retour à l'accueil », ignorée jusqu'à {@link #leftUntil}. */
+    private String leftPkg;
+    private long leftUntil;
     private boolean receiverRegistered;
 
     private View overlay;
@@ -149,6 +162,10 @@ public class GuardService extends AccessibilityService {
         String pkg = p.toString();
 
         if (Prefs.isGuarded(this, pkg)) {
+            if (pkg.equals(leftPkg) && SystemClock.elapsedRealtime() < leftUntil) {
+                // Signal de l'appli qu'on vient de quitter, pendant son passage en arrière-plan.
+                return;
+            }
             currentPkg = pkg;
             evaluate(pkg);
             return;
@@ -163,6 +180,10 @@ public class GuardService extends AccessibilityService {
             return;
         }
         currentPkg = pkg;
+        if (!pkg.equals(homePackage)) {
+            // Une autre appli s'ouvre : l'appli quittée n'a plus à être ignorée.
+            leftPkg = null;
+        }
         hideOverlay();
     }
 
@@ -436,9 +457,14 @@ public class GuardService extends AccessibilityService {
     }
 
     private void goHome() {
+        if (overlayPkg != null) {
+            leftPkg = overlayPkg;
+            leftUntil = SystemClock.elapsedRealtime() + LEAVE_GRACE_MS;
+        }
         final int generation = overlayGeneration;
         boolean ok = performGlobalAction(GLOBAL_ACTION_HOME);
-        // Sécurité : quoi qu'il arrive, l'écran d'attente ne doit jamais rester coincé.
+        // L'écran d'attente disparaît dès que l'accueil s'affiche. Si l'accueil était déjà
+        // à l'écran, il ne se signale pas : on retire alors l'écran d'attente peu après.
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -446,7 +472,7 @@ public class GuardService extends AccessibilityService {
                     hideOverlay();
                 }
             }
-        }, ok ? 2000 : 0);
+        }, ok ? HOME_FALLBACK_MS : 0);
     }
 
     private TextView text(String s, int sp, int color, boolean bold) {
